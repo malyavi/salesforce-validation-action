@@ -1,0 +1,282 @@
+name: Salesforce metadata validation
+description: >-
+  Validates the metadata a pull request changes against a real org as a
+  check-only deployment, and reports the scope and the outcome.
+author: Malyavi
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  jwt-key:
+    description: >-
+      Private key for the JWT bearer flow, as PEM or base64-encoded PEM. Pass
+      this with `username` and `client-id`, or pass `auth-url` instead.
+    required: false
+    default: ''
+  username:
+    description: Username to authenticate as.
+    required: false
+    default: ''
+  client-id:
+    description: Consumer key of the connected app the key belongs to.
+    required: false
+    default: ''
+  instance-url:
+    description: >-
+      Login URL. `https://test.salesforce.com` for a sandbox, a My Domain URL
+      for an org that requires one.
+    required: false
+    default: https://login.salesforce.com
+  auth-url:
+    description: >-
+      An sfdx auth URL, as an alternative to the three JWT inputs. Store it as a
+      secret; it carries a refresh token.
+    required: false
+    default: ''
+  org-alias:
+    description: Alias the org is authenticated under for the duration of the run.
+    required: false
+    default: validation-target
+  source-dirs:
+    description: >-
+      The package directories the delta is built from, comma- or
+      newline-separated. Several get one flag each, so a repository with more
+      than one package directory produces a single delta whose manifest can
+      resolve a component in either.
+    required: false
+    default: force-app
+  extra-dirs:
+    description: >-
+      Directories outside the delta's scope that are validated *whole* when one
+      of them changes, comma- or newline-separated. Use this for a tree that is
+      deployed by hand but should still be proved to compile.
+    required: false
+    default: ''
+  delta:
+    description: >-
+      Whether to validate only what changed. Off validates the whole source
+      directory, which is how a repository checks an org it has never deployed
+      to.
+    required: false
+    default: 'true'
+  base-sha:
+    description: >-
+      Commit to diff against. Defaults to the merge base with the pull
+      request's target branch, which costs one API call.
+    required: false
+    default: ''
+  head-sha:
+    description: Commit to diff up to. Defaults to `HEAD`, which is what is checked out.
+    required: false
+    default: ''
+  ignore-whitespace:
+    description: Whether a whitespace-only change counts as a change.
+    required: false
+    default: 'true'
+  destructive-changes:
+    description: >-
+      When deletions are applied: `post` (after the additions), `pre` (before
+      them), or `ignore` to leave them out of the run.
+    required: false
+    default: post
+  prune-destructive:
+    description: >-
+      Whether to drop deletions the org has already applied. A deletion of a
+      component that is not there is a hard error, and that happens whenever
+      something left the org by another route.
+    required: false
+    default: 'true'
+  test-level:
+    description: '`NoTestRun`, `RunSpecifiedTests`, `RunLocalTests` or `RunAllTestsInOrg`.'
+    required: false
+    default: RunLocalTests
+  tests:
+    description: Test classes to run, comma-separated. Required by `RunSpecifiedTests`.
+    required: false
+    default: ''
+  wait-minutes:
+    description: How long to wait for the org before giving up.
+    required: false
+    default: '30'
+  api-version:
+    description: >-
+      API version for a rewritten destructive manifest. Read from
+      sfdx-project.json when unset.
+    required: false
+    default: ''
+  json-report:
+    description: >-
+      A path to write the org's own structured result to — the component
+      failures, the test failures and the coverage warnings, capped and
+      clipped. For a caller that has to act on a failure rather than read about
+      it. Read with a second CLI call rather than with `--json` on the
+      deployment itself, so the job log keeps its progress and a cancelled job
+      can still cancel the deployment.
+    required: false
+    default: ''
+  install-toolchain:
+    description: >-
+      Whether to install the Salesforce CLI and sfdx-git-delta. Turn off for a
+      repository that pins them itself.
+    required: false
+    default: 'true'
+  sf-cli-version:
+    description: Version of the Salesforce CLI to install.
+    required: false
+    default: latest
+  sgd-version:
+    description: Version of sfdx-git-delta to install.
+    required: false
+    default: latest
+  skip-if-superseded:
+    description: >-
+      Whether to stand down when a newer commit has landed on the pull request,
+      or it was closed, while this run waited for the org.
+    required: false
+    default: 'true'
+  logout:
+    description: Whether to revoke the session and delete the key when the run ends.
+    required: false
+    default: 'true'
+  label:
+    description: How the check is named in every message it writes.
+    required: false
+    default: PR Validation
+  environment:
+    description: >-
+      What the target org is called, for the messages — `staging`, `production`.
+      Nothing is derived from it.
+    required: false
+    default: ''
+  working-directory:
+    description: Directory holding the Salesforce project.
+    required: false
+    default: '.'
+  comment:
+    description: Whether to write the shared pull request comment at all.
+    required: false
+    default: 'true'
+  comment-section:
+    description: Section of the shared comment this action owns.
+    required: false
+    default: validation
+  comment-tag:
+    description: >-
+      HTML comment identifying the shared status comment. Several actions
+      reporting into one comment must be given the same tag.
+    required: false
+    default: '<!-- pr-status-comment -->'
+  comment-section-order:
+    description: >-
+      Fixed rendering order for the comment's sections, comma-separated. A
+      section not listed renders after the listed ones.
+    required: false
+    default: ''
+  pr-number:
+    description: Pull request to comment on. Read from the event payload when unset.
+    required: false
+    default: ''
+  github-token:
+    description: >-
+      Token used to resolve the merge base, read the changed files and write the
+      comment.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  outcome:
+    description: '`passed`, `failed` or `skipped`.'
+    value: ${{ steps.validate.outputs.outcome }}
+  deploy-id:
+    description: >-
+      The validation's job id. A passing validation can be promoted with
+      `sf project deploy quick --job-id <this>` without re-running its tests.
+    value: ${{ steps.validate.outputs.deploy-id }}
+  components:
+    description: Components in the delta.
+    value: ${{ steps.validate.outputs.components }}
+  deletions:
+    description: Deletions in the delta, after pruning.
+    value: ${{ steps.validate.outputs.deletions }}
+  base-sha:
+    description: The commit the delta was taken against.
+    value: ${{ steps.validate.outputs.base-sha }}
+  json-report-path:
+    description: The structured result, when `json-report` asked for one.
+    value: ${{ steps.validate.outputs.json-report-path }}
+  component-failures:
+    description: Components the org refused, from the structured result.
+    value: ${{ steps.validate.outputs.component-failures }}
+  test-failures:
+    description: Apex tests that failed, from the structured result.
+    value: ${{ steps.validate.outputs.test-failures }}
+  manifest-path:
+    description: The generated package manifest.
+    value: ${{ steps.validate.outputs.manifest-path }}
+  destructive-path:
+    description: The generated destructive manifest.
+    value: ${{ steps.validate.outputs.destructive-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate the changed metadata
+      id: validate
+      shell: bash
+      env:
+        # A composite action does not populate INPUT_* for its own run steps,
+        # so every input is mapped here and read through lib/inputs.mjs.
+        INPUT_JWT_KEY: ${{ inputs.jwt-key }}
+        INPUT_USERNAME: ${{ inputs.username }}
+        INPUT_CLIENT_ID: ${{ inputs.client-id }}
+        INPUT_INSTANCE_URL: ${{ inputs.instance-url }}
+        INPUT_AUTH_URL: ${{ inputs.auth-url }}
+        INPUT_ORG_ALIAS: ${{ inputs.org-alias }}
+        INPUT_SOURCE_DIRS: ${{ inputs.source-dirs }}
+        INPUT_EXTRA_DIRS: ${{ inputs.extra-dirs }}
+        INPUT_DELTA: ${{ inputs.delta }}
+        INPUT_BASE_SHA: ${{ inputs.base-sha }}
+        INPUT_HEAD_SHA: ${{ inputs.head-sha }}
+        INPUT_IGNORE_WHITESPACE: ${{ inputs.ignore-whitespace }}
+        INPUT_DESTRUCTIVE_CHANGES: ${{ inputs.destructive-changes }}
+        INPUT_PRUNE_DESTRUCTIVE: ${{ inputs.prune-destructive }}
+        INPUT_TEST_LEVEL: ${{ inputs.test-level }}
+        INPUT_TESTS: ${{ inputs.tests }}
+        INPUT_WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        INPUT_API_VERSION: ${{ inputs.api-version }}
+        INPUT_JSON_REPORT: ${{ inputs.json-report }}
+        INPUT_INSTALL_TOOLCHAIN: ${{ inputs.install-toolchain }}
+        INPUT_SF_CLI_VERSION: ${{ inputs.sf-cli-version }}
+        INPUT_SGD_VERSION: ${{ inputs.sgd-version }}
+        INPUT_SKIP_IF_SUPERSEDED: ${{ inputs.skip-if-superseded }}
+        INPUT_LOGOUT: ${{ inputs.logout }}
+        INPUT_LABEL: ${{ inputs.label }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_COMMENT_SECTION: ${{ inputs.comment-section }}
+        INPUT_COMMENT_TAG: ${{ inputs.comment-tag }}
+        INPUT_COMMENT_SECTION_ORDER: ${{ inputs.comment-section-order }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        # Non-interactive CLI behaviour. Set here rather than documented as the
+        # caller's job: every one of them wants all four.
+        SF_DISABLE_TELEMETRY: 'true'
+        SF_DISABLE_AUTOUPDATE: 'true'
+        SF_SKIP_NEW_VERSION_CHECK: 'true'
+        SF_USE_GENERIC_UNIX_KEYCHAIN: 'true'
+      run: node "$GITHUB_ACTION_PATH/scripts/validate.mjs"
+
+    # always(): the step above tears down in its own `finally`, which covers
+    # every way it can end on its own. This covers the ways it cannot — a
+    # cancelled job, a step timeout — where the key is still on disk, the
+    # session is still live, and a validation may still be holding the org's
+    # deployment lock.
+    - name: Clean up the credential
+      if: ${{ always() && inputs.logout == 'true' }}
+      shell: bash
+      env:
+        INPUT_ORG_ALIAS: ${{ inputs.org-alias }}
+      run: node "$GITHUB_ACTION_PATH/scripts/cleanup.mjs"

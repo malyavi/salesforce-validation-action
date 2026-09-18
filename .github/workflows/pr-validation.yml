@@ -1,0 +1,149 @@
+name: PR Validation
+
+# `tests` asks whether the logic is right; `smoke` asks whether the action runs.
+#
+# No org is involved in either, and that is not a gap being papered over — it is
+# where the line falls. Everything up to the login is exercised for real: the
+# toolchain install, the delta build, the empty-delta short circuit that has to
+# finish green without authenticating, and the refusals a caller is most likely
+# to hit. What happens *inside* a check-only deployment is Salesforce's own
+# behaviour, and a throwaway org per pull request would prove nothing about this
+# code that the CLI's own exit status does not already say.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Check that action.yml parses
+        run: |
+          pip install --quiet --disable-pip-version-check pyyaml
+          python3 test/check-action-yaml.py
+
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+
+      - name: Build the fixture repository
+        run: test/fixtures/setup.sh "${{ runner.temp }}/fixture"
+
+      # A refusal first, and with the toolchain off so it costs nothing: an
+      # incomplete credential has to be caught before anything is installed,
+      # and the message has to name the inputs rather than leaving a caller to
+      # read a Salesforce authentication error.
+      - name: Run with no credential at all
+        id: no-credential
+        uses: ./
+        continue-on-error: true
+        with:
+          working-directory: ${{ runner.temp }}/fixture
+          install-toolchain: 'false'
+          comment: 'false'
+          skip-if-superseded: 'false'
+
+      - name: Check that it refused, and said what to set
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [ "${{ steps.no-credential.outcome }}" = "failure" ] || fail "A run with no credential must fail; it reported '${{ steps.no-credential.outcome }}'."
+          [ "${{ steps.no-credential.outputs.outcome }}" = "failed" ] || fail "The action's outcome output should be 'failed', got '${{ steps.no-credential.outputs.outcome }}'."
+
+      # The empty-delta path: a documentation-only change, which must finish
+      # green without ever authenticating. This is the call that installs the
+      # toolchain, so the install itself is exercised once.
+      - name: A change with no metadata in it
+        id: empty
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/fixture
+          head-sha: docs
+          base-sha: base
+          # Deliberately nonsense: the point is that it is never used, because
+          # the run finishes before the login.
+          jwt-key: not-a-key
+          username: nobody@example.com
+          client-id: unused
+          comment: 'false'
+          skip-if-superseded: 'false'
+
+      - name: Check that it skipped without an org
+        env:
+          OUTCOME: ${{ steps.empty.outputs.outcome }}
+          COMPONENTS: ${{ steps.empty.outputs.components }}
+        run: |
+          echo "outcome=$OUTCOME components=$COMPONENTS"
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$OUTCOME" = "skipped" ] || fail "A documentation-only change must report 'skipped', got '$OUTCOME'. If it reported 'failed' the run reached the login, which is exactly what the empty-delta check exists to avoid."
+          [ "$COMPONENTS" = "0" ] || fail "Expected an empty delta, got '$COMPONENTS' component(s)."
+
+      # The real-delta path, as far as it can go without an org: the manifest is
+      # built and published, and the run then fails at the login — with the
+      # scope already on the outputs, which is what lets a caller upload the
+      # manifest from a failed run.
+      - name: A change with metadata in it
+        id: real
+        uses: ./
+        continue-on-error: true
+        with:
+          working-directory: ${{ runner.temp }}/fixture
+          head-sha: change
+          base-sha: base
+          jwt-key: not-a-key
+          username: nobody@example.com
+          client-id: unused
+          install-toolchain: 'false'
+          comment: 'false'
+          skip-if-superseded: 'false'
+
+      - name: Check the delta it built
+        env:
+          COMPONENTS: ${{ steps.real.outputs.components }}
+          MANIFEST: ${{ runner.temp }}/fixture/${{ steps.real.outputs.manifest-path }}
+          BASE: ${{ steps.real.outputs.base-sha }}
+        run: |
+          echo "components=$COMPONENTS manifest=$MANIFEST base=$BASE"
+          fail() { echo "::error::$1"; exit 1; }
+          [ "${{ steps.real.outcome }}" = "failure" ] || fail "With a nonsense key the login must fail; the step reported '${{ steps.real.outcome }}'."
+          [ "$COMPONENTS" = "1" ] || fail "Expected 1 component in the delta, got '$COMPONENTS'. The outputs are published before the org is touched precisely so this is knowable from a failed run."
+          [ "$BASE" = "base" ] || fail "Expected the base to be reported as 'base', got '$BASE'."
+          grep -q "<name>ApexClass</name>" "$MANIFEST" || fail "The generated manifest does not list the changed class: $(cat "$MANIFEST" 2>&1)"
+
+      - name: Check that nothing was left on disk
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          # The cleanup step deletes the key whether or not the run got as far
+          # as using it; a leftover private key on a runner is the one failure
+          # here that would matter after the job ends.
+          if ls "${{ runner.temp }}"/sf-auth-*.key > /dev/null 2>&1; then
+            fail "A credential file survived the run: $(ls "${{ runner.temp }}"/sf-auth-*.key)"
+          fi
