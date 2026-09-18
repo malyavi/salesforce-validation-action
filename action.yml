@@ -167,7 +167,7 @@ inputs:
       HTML comment identifying the shared status comment. Several actions
       reporting into one comment must be given the same tag.
     required: false
-    default: '<!-- pr-status-comment -->'
+    default: '<!-- malyavi-pr-status-comment -->'
   comment-section-order:
     description: >-
       Fixed rendering order for the comment's sections, comma-separated. A

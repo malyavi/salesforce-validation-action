@@ -1,11 +1,11 @@
-import {writeFile}                          from 'node:fs/promises';
-import {commentConfig, updateCommentSection} from '../lib/comment.mjs';
-import {resolveConfig, treeList}            from '../lib/config.mjs';
+import {writeFile}                              from 'node:fs/promises';
+import {commentConfig, updateCommentSection}    from '../lib/comment.mjs';
+import {resolveConfig, treeList}                from '../lib/config.mjs';
 import {error, group, setOutput, summary, warn} from '../lib/core.mjs';
-import {buildDelta, isEmpty, resolveScope}  from '../lib/delta.mjs';
-import {pruneDestructive, renderPruned}     from '../lib/destructive.mjs';
-import {failureMessage}                     from '../lib/inputs.mjs';
-import {renderDeltaSummary}                 from '../lib/manifest.mjs';
+import {buildDelta, isEmpty, resolveScope}      from '../lib/delta.mjs';
+import {pruneDestructive, renderPruned}         from '../lib/destructive.mjs';
+import {failureMessage}                         from '../lib/inputs.mjs';
+import {renderDeltaSummary}                     from '../lib/manifest.mjs';
 import {
   renderFailed,
   renderNothing,
@@ -14,7 +14,7 @@ import {
   summaryFailed,
   summaryNothing,
   summaryPassed
-}                                           from '../lib/report.mjs';
+}                                               from '../lib/report.mjs';
 import {
   authenticate,
   clearActiveDeployment,
@@ -23,9 +23,9 @@ import {
   fetchDeployReport,
   registerActiveDeployment,
   teardown
-}                                           from '../lib/salesforce.mjs';
-import {isSuperseded, runContext}           from '../lib/superseded.mjs';
-import {installToolchain}                   from '../lib/toolchain.mjs';
+}                                               from '../lib/salesforce.mjs';
+import {isSuperseded, runContext}               from '../lib/superseded.mjs';
+import {installToolchain}                       from '../lib/toolchain.mjs';
 
 /**
  * Validates the metadata a change touches against a real org: a check-only

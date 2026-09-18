@@ -1,6 +1,6 @@
-import {afterEach, describe, it} from 'node:test';
-import assert                    from 'node:assert/strict';
-import {parseManifest}           from '../lib/manifest.mjs';
+import {afterEach, describe, it}  from 'node:test';
+import assert                     from 'node:assert/strict';
+import {parseManifest}            from '../lib/manifest.mjs';
 import {isSuperseded, runContext} from '../lib/superseded.mjs';
 import {
   renderFailed,

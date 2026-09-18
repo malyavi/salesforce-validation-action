@@ -1,10 +1,10 @@
-import {afterEach, describe, it}                    from 'node:test';
-import assert                                        from 'node:assert/strict';
-import {ConfigError}                                 from '../lib/inputs.mjs';
+import {afterEach, describe, it}                                  from 'node:test';
+import assert                                                     from 'node:assert/strict';
+import {ConfigError}                                              from '../lib/inputs.mjs';
 import {resolveConfig, resolveCredentials, treeList, TEST_LEVELS} from '../lib/config.mjs';
-import {deployFailureDetail, deployIdFrom, toPem}    from '../lib/salesforce.mjs';
-import {versioned}                                   from '../lib/toolchain.mjs';
-import {isEmpty, resolveRange, resolveScope}         from '../lib/delta.mjs';
+import {deployFailureDetail, deployIdFrom, toPem}                 from '../lib/salesforce.mjs';
+import {versioned}                                                from '../lib/toolchain.mjs';
+import {isEmpty, resolveRange, resolveScope}                      from '../lib/delta.mjs';
 
 /**
  * Everything the action decides before it touches an org — which is where a

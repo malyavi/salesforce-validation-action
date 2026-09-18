@@ -1,6 +1,6 @@
 import {afterEach, describe, it}                      from 'node:test';
-import assert                                          from 'node:assert/strict';
-import {commentConfig, parseSections, renderSections}   from '../lib/comment.mjs';
+import assert                                         from 'node:assert/strict';
+import {commentConfig, parseSections, renderSections} from '../lib/comment.mjs';
 
 /**
  * The shared status comment, whose whole job is to let several jobs report into
