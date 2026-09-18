@@ -1,0 +1,15 @@
+{
+  "action": "synchronize",
+  "number": 7,
+  "pull_request": {
+    "number": 7,
+    "state": "open",
+    "head": {
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "feature/branch"
+    },
+    "base": {
+      "ref": "main"
+    }
+  }
+}
