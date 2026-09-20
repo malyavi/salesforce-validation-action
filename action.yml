@@ -110,8 +110,9 @@ inputs:
     description: >-
       A path to write the org's own structured result to — the component
       failures, the test failures and the coverage warnings, capped and
-      clipped. For a caller that has to act on a failure rather than read about
-      it. Read with a second CLI call rather than with `--json` on the
+      clipped, or the CLI's own error when it refused the run before the org
+      was asked. For a caller that has to act on a failure rather than read
+      about it. Read with a second CLI call rather than with `--json` on the
       deployment itself, so the job log keeps its progress and a cancelled job
       can still cancel the deployment.
     required: false

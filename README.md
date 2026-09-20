@@ -162,6 +162,26 @@ the run ends, so a two-hour validation would have an empty job log and a
 cancelled job could not cancel the deployment it started. The extra call costs
 one API round trip and keeps both.
 
+**A run the CLI refused before the org was asked anything has no report**, and
+its transcript is the only account of what went wrong — a file whose metadata
+type the CLI could not infer, a project file it could not parse. `message` then
+carries the CLI's own error, from its `Error (…):` line to the end with the
+colour codes removed, so a consumer still has something to act on:
+
+```json
+{
+  "status": "failed",
+  "message": "Error (TypeInferenceError): force-app/main/default/emailAlerts/New_Contact_Alert.emailAlert-meta.xml: Could not infer a metadata type\nA metadata type lookup for …",
+  "errors": [],
+  "tests": [],
+  "coverage": []
+}
+```
+
+Before this the file said only that the deployment did not succeed, with no
+component named, and the pipeline that hands failures to whatever will fix them
+had nothing to hand over.
+
 ## The shared comment
 
 Give every check reporting into one comment the same `comment-tag`:
