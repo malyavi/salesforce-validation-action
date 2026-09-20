@@ -1,10 +1,10 @@
-import {afterEach, describe, it}                                  from 'node:test';
-import assert                                                     from 'node:assert/strict';
-import {ConfigError}                                              from '../lib/inputs.mjs';
-import {resolveConfig, resolveCredentials, treeList, TEST_LEVELS} from '../lib/config.mjs';
-import {deployFailureDetail, deployIdFrom, toPem}                 from '../lib/salesforce.mjs';
-import {versioned}                                                from '../lib/toolchain.mjs';
-import {isEmpty, resolveRange, resolveScope}                      from '../lib/delta.mjs';
+import {afterEach, describe, it}                                     from 'node:test';
+import assert                                                        from 'node:assert/strict';
+import {ConfigError}                                                 from '../lib/inputs.mjs';
+import {resolveConfig, resolveCredentials, treeList, TEST_LEVELS}    from '../lib/config.mjs';
+import {cliFailureMessage, deployFailureDetail, deployIdFrom, toPem} from '../lib/salesforce.mjs';
+import {versioned}                                                   from '../lib/toolchain.mjs';
+import {isEmpty, resolveRange, resolveScope}                         from '../lib/delta.mjs';
 
 /**
  * Everything the action decides before it touches an org — which is where a
@@ -315,6 +315,20 @@ describe('deployFailureDetail', () => {
     assert.deepEqual(detail.errors, []);
   });
 
+  it('says what the CLI said when there is no report to read', () => {
+    // A run refused before the org was asked has no job: the CLI's own error is
+    // the only account of it, and "did not succeed" hid it from the pipeline that
+    // hands failures to whatever will fix them.
+    const detail = deployFailureDetail(null, {fallbackMessage: 'Error (TypeInferenceError): Could not infer'});
+    assert.equal(detail.message, 'Error (TypeInferenceError): Could not infer');
+    assert.equal(
+      deployFailureDetail(failedReport, {fallbackMessage: 'ignored'}).message,
+      'Deploy failed.',
+      'The report\'s own message wins when there is one.'
+    );
+    assert.equal(deployFailureDetail({status: 0, result: {success: true}}, {fallbackMessage: 'x'}).message, null);
+  });
+
   it('caps the entries and clips a long message, since another system reads this file', () => {
     const many = Array.from({length: 40}, (unused, index) => ({
       fullName: `C${index}`,
@@ -335,5 +349,38 @@ describe('deployFailureDetail', () => {
       result: {success: false, details: {runTestResult: {codeCoverageWarnings: [{message: 'Org coverage is 70%'}]}}}
     });
     assert.deepEqual(detail.coverage, ['Org coverage is 70%']);
+  });
+});
+
+describe('cliFailureMessage', () => {
+  const transcript = '$ sf project deploy validate --target-org validation-target --manifest package.xml\n' +
+    '\tdeploy-retrieve \u001b[2m4.1.2\u001b[22m \u001b[2m(core)\u001b[22m\n' +
+    '\u001b[1m\u001b[31mError (TypeInferenceError):\u001b[39m\u001b[22m force-app/main/default/emailAlerts/' +
+    'New_Contact_Alert.emailAlert-meta.xml: Could not infer a metadata type\n' +
+    '\u001b[2mA metadata type lookup for "New_Contact_Alert.emailAlert-meta.xml" found the following close ' +
+    'matches:\u001b[22m\n' +
+    '\u001b[2m- Add the type via PR.\u001b[22m\n';
+
+  it('keeps everything from the CLI\'s error line on, without the colour codes', () => {
+    // The hints follow the message on their own lines; the noise before it — the
+    // command, the plugin banner — is not the failure.
+    const message = cliFailureMessage(transcript);
+    assert.match(message, /^Error \(TypeInferenceError\): force-app/);
+    assert.match(message, /Could not infer a metadata type\nA metadata type lookup/);
+    assert.match(message, /Add the type via PR\.$/);
+    assert.doesNotMatch(message, /\u001b/);
+  });
+
+  it('keeps the tail of a transcript with no error line, and clips a long one', () => {
+    const lines = Array.from({length: 30}, (unused, index) => `line ${index}`).join('\n');
+    const message = cliFailureMessage(lines);
+    assert.match(message, /^line 10\n/);
+    assert.match(message, /line 29$/);
+    assert.equal(cliFailureMessage(lines, 50).length, 51, 'Clipped to the cap plus the ellipsis.');
+  });
+
+  it('answers null for no transcript at all, so the report keeps its own wording', () => {
+    assert.equal(cliFailureMessage(undefined), null);
+    assert.equal(cliFailureMessage('   \n'), null);
   });
 });

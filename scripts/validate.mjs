@@ -18,6 +18,7 @@ import {
 import {
   authenticate,
   clearActiveDeployment,
+  cliFailureMessage,
   deploy,
   deployFailureDetail,
   fetchDeployReport,
@@ -170,7 +171,9 @@ async function validate(delta) {
     });
   } catch (thrown) {
     await clearActiveDeployment();
-    await writeJsonReport(jobId);
+    // The transcript travels with the failure: a run the CLI refused before
+    // the org was asked has no job, no report and nothing but this to say why.
+    await writeJsonReport(jobId, thrown.output ?? thrown.message);
     await summary(summaryFailed(config, scope, thrown.output ?? thrown.message));
     await comment(renderFailed(config, delta));
     await publishOutcome('failed');
@@ -193,20 +196,26 @@ async function validate(delta) {
  * pipeline that hands the errors to whatever will fix them, a bot that
  * annotates the diff. Skipped silently when no file was asked for.
  *
+ * A run the CLI refused before the org was asked anything — a file whose type
+ * it could not infer — has no job and so no report to read back; its
+ * transcript is the only account of what went wrong, and it becomes the
+ * result's `message` rather than a line saying the deployment did not succeed.
+ *
  * Never fatal. The verdict is already decided by the time this runs, and a
  * report that could not be written is a line in the log rather than a red run
  * on top of a red run.
  *
  * @param {string|undefined} deployId The deployment's job id
+ * @param {string} [cliOutput] The CLI's transcript, when the run failed
  * @return {Promise<void>}
  */
-async function writeJsonReport(deployId) {
+async function writeJsonReport(deployId, cliOutput) {
   if (!config.jsonReport) {
     return;
   }
 
   const report = await fetchDeployReport(deployId, config.orgAlias);
-  const detail = deployFailureDetail(report);
+  const detail = deployFailureDetail(report, {fallbackMessage: cliFailureMessage(cliOutput)});
   try {
     await writeFile(config.jsonReport, `${JSON.stringify(detail, null, 2)}\n`, 'utf8');
     console.log(`Wrote the deployment report to ${config.jsonReport}.`);
