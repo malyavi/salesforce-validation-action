@@ -6,6 +6,7 @@ import {buildDelta, isEmpty, resolveScope}      from '../lib/delta.mjs';
 import {pruneDestructive, renderPruned}         from '../lib/destructive.mjs';
 import {failureMessage}                         from '../lib/inputs.mjs';
 import {renderDeltaSummary}                     from '../lib/manifest.mjs';
+import {recordValidation}                       from '../lib/record.mjs';
 import {
   renderFailed,
   renderNothing,
@@ -37,6 +38,10 @@ import {installToolchain}                       from '../lib/toolchain.mjs';
  * happens before the summary is written, because pruning the deletions needs
  * the org and the summary should describe what will actually be attempted
  * rather than what the git diff alone implied.
+ *
+ * A passing run can leave a record of itself — `record-validation` — that the
+ * deploy action promotes with a quick deploy once the change lands, instead of
+ * running the tests again. See `lib/record.mjs`.
  */
 
 /** Set once the comment has been written, so the failure handler does not write a second one. */
@@ -183,7 +188,16 @@ async function validate(delta) {
   await clearActiveDeployment();
   await writeJsonReport(result.deployId ?? jobId);
 
-  await summary(summaryPassed(config, scope, result.deployId));
+  // Recorded before it is reported, so the summary can say where.
+  const recordTag = config.recordValidation
+    ? await group(
+      'Record the validation for a quick deploy',
+      () => recordValidation(delta, config, result.deployId ?? jobId)
+    )
+    : '';
+  await setOutput('validation-tag', recordTag);
+
+  await summary(summaryPassed(config, scope, result.deployId, recordTag));
   await comment(renderPassed(config, delta, result.deployId));
   await publishOutcome('passed', result.deployId);
 }

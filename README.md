@@ -29,6 +29,8 @@ outcome and the scope.
 6. **Runs one check-only deployment** and reports it: the scope in the pull
    request comment, the Metadata API's own errors in the job summary, and the
    quick-deploy id as an output.
+7. **Records a passing run**, when asked to, so that the deploy action can
+   promote it once the change lands instead of running the tests again.
 
 ## The decisions worth knowing about
 
@@ -63,6 +65,50 @@ while the org keeps validating for its full wait, holding the deployment lock
 against every run behind it. The job id is read out of the CLI's output as it
 appears and saved to the job's environment, so the cleanup step can cancel it
 even when the process that started it is gone.
+
+## Recording a validation for a quick deploy
+
+The org keeps a succeeded validation for ten days, and in that window the same
+package can be deployed by its job id alone — `sf project deploy quick` — with
+no tests. With `record-validation: true`, a passing run writes an annotated tag,
+`ci/validated/<environment>/<tree>`, whose message carries what would have to
+match for that to be safe: the job id, the two commits and their trees, the
+package directories, the handling of deletions and whitespace, and the test
+level. [salesforce-deploy-action](https://github.com/malyavi/salesforce-deploy-action)
+with `quick-deploy: true` looks the tag up by the tree it is about to deploy
+and promotes the validation when everything else matches too.
+
+```yaml
+permissions:
+  contents: write        # the record is a tag
+  pull-requests: write
+
+- uses: malyavi/salesforce-validation-action@v1
+  with:
+    jwt-key: ${{ secrets.SF_JWT_KEY }}
+    username: ${{ vars.SF_USERNAME }}
+    client-id: ${{ vars.SF_CLIENT_ID }}
+    environment: ${{ github.base_ref }}   # the deploy action's name for the same org
+    record-validation: 'true'
+```
+
+Named by the **tree** on purpose. A pull request is validated as its merge
+commit, which is never the commit that lands on the branch — a squash, a
+rebase and a merge each make a new one — but all of them produce the same tree
+as long as the base did not move. So the deploy action's "nothing changed since
+the validation" is one lookup, and a base that moved underneath the pull
+request produces a tree nothing recorded, which is the right answer.
+
+**Two kinds of run are not recorded, on purpose.** A run that folded an
+`extra-dirs` tree into one package validated something a deployment does not
+carry, and promoting it would deploy that tree along with the delta — which,
+for a tree that is deployed by hand, is exactly the thing validating it was
+not a promise to do. A run with `delta` off validated the whole source
+directory, which is not a delta either. Both say so in the log.
+
+Writing the tag needs `contents: write`; without it the run warns and passes,
+and the deployment runs its tests. Records older than ten days are swept each
+time a new one is written.
 
 ## Inputs
 
@@ -107,7 +153,9 @@ refused by name, before anything is installed.
 | `skip-if-superseded` | `true` | Stand down when a newer commit has landed, or the pull request closed. |
 | `logout` | `true` | Revoke the session and delete the key when the run ends. |
 | `label` | `PR Validation` | How the check names itself. |
-| `environment` | — | What the org is called, for the messages. Nothing is derived from it. |
+| `environment` | — | What the org is called, for the messages — and for the validation record's name, so use the deploy action's value for the same org. |
+| `record-validation` | `false` | Record a passing run as `ci/validated/<environment>/<tree>` for the deploy action to promote. Needs `contents: write`. |
+| `validation-tag-prefix` | `ci/validated` | Where the records are written; the environment and the tree follow it. |
 | `working-directory` | `.` | Directory holding the project. |
 | `comment`, `comment-section`, `comment-tag`, `comment-section-order`, `pr-number`, `github-token` | | The shared comment; see below. |
 
@@ -117,6 +165,7 @@ refused by name, before anything is installed.
 | --- | --- |
 | `outcome` | `passed`, `failed` or `skipped`. |
 | `deploy-id` | The validation's job id. A passing validation is promoted with `sf project deploy quick --job-id <this>`, without re-running its tests. |
+| `validation-tag` | The tag the run was recorded as, when `record-validation` is on and the run was one a deployment can promote. |
 | `components`, `deletions` | The size of the delta. |
 | `base-sha` | The commit it was taken against. |
 | `manifest-path`, `destructive-path` | The generated manifests. |
@@ -196,7 +245,8 @@ Give every check reporting into one comment the same `comment-tag`:
 ## Requirements
 
 - **`fetch-depth: 0`** on the checkout; the delta reads history.
-- **`pull-requests: write`** for the comment, and `contents: read`.
+- **`pull-requests: write`** for the comment, and `contents: read` — or
+  `contents: write` with `record-validation`.
 - **Node 20 or newer**, which every GitHub-hosted runner has.
 - A connected app with the JWT flow enabled, or an sfdx auth URL.
 
