@@ -148,9 +148,26 @@ inputs:
   environment:
     description: >-
       What the target org is called, for the messages — `staging`, `production`.
-      Nothing is derived from it.
+      It also names the validation record, when `record-validation` is on, so
+      give it the value the deploy action uses for the same org.
     required: false
     default: ''
+  record-validation:
+    description: >-
+      Whether to record a passing validation as an annotated tag —
+      `<validation-tag-prefix>/<environment>/<tree>` — so that the deploy
+      action can promote it with a quick deploy, instead of running the tests
+      again, once the change lands. Needs `contents: write`. A run that folded
+      an `extra-dirs` tree into one package, or validated with `delta` off, is
+      not recorded: a deployment does not carry what it validated.
+    required: false
+    default: 'false'
+  validation-tag-prefix:
+    description: >-
+      Prefix of the tags the records are written under. The environment and
+      the validated tree follow it.
+    required: false
+    default: ci/validated
   working-directory:
     description: Directory holding the Salesforce project.
     required: false
@@ -195,6 +212,11 @@ outputs:
       The validation's job id. A passing validation can be promoted with
       `sf project deploy quick --job-id <this>` without re-running its tests.
     value: ${{ steps.validate.outputs.deploy-id }}
+  validation-tag:
+    description: >-
+      The tag a passing validation was recorded as, when `record-validation`
+      is on and the run was one a deployment can promote. Empty otherwise.
+    value: ${{ steps.validate.outputs.validation-tag }}
   components:
     description: Components in the delta.
     value: ${{ steps.validate.outputs.components }}
@@ -255,6 +277,8 @@ runs:
         INPUT_LOGOUT: ${{ inputs.logout }}
         INPUT_LABEL: ${{ inputs.label }}
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_RECORD_VALIDATION: ${{ inputs.record-validation }}
+        INPUT_VALIDATION_TAG_PREFIX: ${{ inputs.validation-tag-prefix }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_COMMENT: ${{ inputs.comment }}
         INPUT_COMMENT_SECTION: ${{ inputs.comment-section }}
