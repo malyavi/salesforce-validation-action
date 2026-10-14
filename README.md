@@ -28,7 +28,10 @@ outcome and the scope.
 5. **Authenticates**, then **prunes the deletions** the org has already applied.
 6. **Runs one check-only deployment** and reports it: the scope in the pull
    request comment, the Metadata API's own errors in the job summary, and the
-   quick-deploy id as an output.
+   quick-deploy id as an output. A delta made only of markup — Lightning web
+   components, Aura bundles, Visualforce pages and components, email
+   templates — runs **without the Apex tests**, whatever `test-level` says;
+   nothing in it is reachable from one.
 7. **Records a passing run**, when asked to, so that the deploy action can
    promote it once the change lands instead of running the tests again.
 
@@ -99,6 +102,18 @@ as long as the base did not move. So the deploy action's "nothing changed since
 the validation" is one lookup, and a base that moved underneath the pull
 request produces a tree nothing recorded, which is the right answer.
 
+**A UI-only change skips the Apex tests.** When every component in the delta —
+added, modified or deleted — is a `LightningComponentBundle`,
+`AuraDefinitionBundle`, `ApexPage`, `ApexComponent` or `EmailTemplate`, the
+validation runs at `NoTestRun` whatever `test-level` asked for, and the job
+summary says so. These types are HTML, CSS and JavaScript; no Apex test can
+observe a change to any of them, so running the suite could only ever report
+something the change did not cause. One Apex class, field or flow anywhere in
+the delta, a run that folded an `extra-dirs` tree into the package, or a run
+with `delta` off, and the configured level stands. The record carries the
+level that actually ran, so a deployment asking for `RunLocalTests` will not
+promote it; it deploys afresh, with its tests, and says why.
+
 **Two kinds of run are not recorded, on purpose.** A run that folded an
 `extra-dirs` tree into one package validated something a deployment does not
 carry, and promoting it would deploy that tree along with the delta — which,
@@ -138,7 +153,7 @@ refused by name, before anything is installed.
 | `ignore-whitespace` | `true` | Whether a whitespace-only change counts. |
 | `destructive-changes` | `post` | `post`, `pre` or `ignore`. |
 | `prune-destructive` | `true` | Whether to drop deletions the org has already applied. |
-| `test-level` | `RunLocalTests` | `NoTestRun`, `RunSpecifiedTests`, `RunLocalTests` or `RunAllTestsInOrg`. |
+| `test-level` | `RunLocalTests` | `NoTestRun`, `RunSpecifiedTests`, `RunLocalTests` or `RunAllTestsInOrg`. A UI-only delta runs at `NoTestRun` regardless; see above. |
 | `tests` | — | Classes for `RunSpecifiedTests`. |
 | `wait-minutes` | `30` | How long to wait for the org. |
 | `api-version` | from `sfdx-project.json` | Only used when rewriting a pruned manifest. |

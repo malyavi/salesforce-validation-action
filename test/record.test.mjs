@@ -91,3 +91,21 @@ describe('summaryPassed', () => {
     assert.equal(summaryPassed(summaryConfig, {label: 'the delta'}, '0AfXX00000ABCDEFGH').includes('Recorded'), false);
   });
 });
+
+describe('summaryPassed, with the tests skipped', () => {
+  it('reports the level that ran and the reason beside it', () => {
+    const summary = summaryPassed(
+      {label: 'PR Validation', environment: '', testLevel: 'NoTestRun'},
+      {label: 'the delta'},
+      '0AfXX00000ABCDEFGH',
+      '',
+      'Apex tests skipped: every change here is UI metadata (`LightningComponentBundle`), which no Apex test can reach. `RunLocalTests` was asked for.'
+    );
+    assert.match(summary, /Apex test level: `NoTestRun` — Apex tests skipped/);
+  });
+
+  it('says nothing extra when the level is the one asked for', () => {
+    const summary = summaryPassed({label: 'x', environment: '', testLevel: 'RunLocalTests'}, {label: 'the delta'}, undefined);
+    assert.match(summary, /Apex test level: `RunLocalTests`$/m);
+  });
+});
