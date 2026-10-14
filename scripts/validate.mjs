@@ -27,6 +27,7 @@ import {
   teardown
 }                                               from '../lib/salesforce.mjs';
 import {isSuperseded, runContext}               from '../lib/superseded.mjs';
+import {resolveTestLevel}                       from '../lib/test-level.mjs';
 import {installToolchain}                       from '../lib/toolchain.mjs';
 
 /**
@@ -154,10 +155,21 @@ async function main() {
  */
 async function validate(delta) {
   const scope = await group('Resolve the validation scope', () => resolveScope(delta, config));
+
+  // A delta of markup alone — components, pages, email templates — is
+  // validated without the Apex tests, whatever level was asked for: nothing in
+  // it is reachable from one. The level that actually ran is what the record
+  // carries, so a deployment that asks for more knows not to promote it.
+  const testing = resolveTestLevel(delta, config);
+  if (testing.skipped) {
+    console.log(testing.reason);
+  }
+  const ran = {...config, testLevel: testing.testLevel, tests: testing.tests};
+
   const args = [
     ...scope.args,
-    '--test-level', config.testLevel,
-    ...config.tests.flatMap((name) => ['--tests', name]),
+    '--test-level', ran.testLevel,
+    ...ran.tests.flatMap((name) => ['--tests', name]),
     '--wait', String(config.waitMinutes)
   ];
 
@@ -192,12 +204,12 @@ async function validate(delta) {
   const recordTag = config.recordValidation
     ? await group(
       'Record the validation for a quick deploy',
-      () => recordValidation(delta, config, result.deployId ?? jobId)
+      () => recordValidation(delta, ran, result.deployId ?? jobId)
     )
     : '';
   await setOutput('validation-tag', recordTag);
 
-  await summary(summaryPassed(config, scope, result.deployId, recordTag));
+  await summary(summaryPassed(ran, scope, result.deployId, recordTag, testing.reason));
   await comment(renderPassed(config, delta, result.deployId));
   await publishOutcome('passed', result.deployId);
 }
