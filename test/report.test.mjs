@@ -104,6 +104,13 @@ describe('summaryFailed', () => {
     assert.match(summary, /line 399/);
     assert.equal(summary.includes('line 50'), false);
   });
+
+  it('strips the CLI\'s colour codes, which render as noise in markdown', () => {
+    const output = '\u001b[1m\u001b[31mComponent Failures [1]\u001b[39m\u001b[22m\nFlow  Example  insufficient access rights';
+    const summary = summaryFailed(config, {label: 'the delta'}, output);
+    assert.match(summary, /Component Failures \[1\]\nFlow  Example/);
+    assert.equal(summary.includes('\u001b'), false);
+  });
 });
 
 describe('summaryNothing', () => {
