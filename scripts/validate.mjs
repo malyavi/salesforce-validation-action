@@ -18,6 +18,7 @@ import {
 }                                               from '../lib/report.mjs';
 import {
   authenticate,
+  checkOnlyCommand,
   clearActiveDeployment,
   cliFailureMessage,
   deploy,
@@ -166,8 +167,12 @@ async function validate(delta) {
   }
   const ran = {...config, testLevel: testing.testLevel, tests: testing.tests};
 
+  // A dry run rather than a validation when no tests run: the CLI's `validate`
+  // refuses `NoTestRun`, and the org sees the same check-only request either way.
+  const command = checkOnlyCommand(ran.testLevel);
   const args = [
     ...scope.args,
+    ...command.args,
     '--test-level', ran.testLevel,
     ...ran.tests.flatMap((name) => ['--tests', name]),
     '--wait', String(config.waitMinutes)
@@ -176,7 +181,7 @@ async function validate(delta) {
   let result;
   try {
     result = await deploy(args, {
-      verb: 'validate',
+      verb: command.verb,
       orgAlias: config.orgAlias,
       // Recorded as soon as the CLI prints it, so the cleanup step can cancel
       // a validation this process never gets to see the end of — and so the

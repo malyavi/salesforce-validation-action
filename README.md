@@ -112,7 +112,11 @@ something the change did not cause. One Apex class, field or flow anywhere in
 the delta, a run that folded an `extra-dirs` tree into the package, or a run
 with `delta` off, and the configured level stands. The record carries the
 level that actually ran, so a deployment asking for `RunLocalTests` will not
-promote it; it deploys afresh, with its tests, and says why.
+promote it; it deploys afresh, with its tests, and says why. Such a run is
+`sf project deploy start --dry-run` rather than `sf project deploy validate`:
+the CLI reserves `validate` for the levels that run tests and refuses
+`NoTestRun` on it outright, where a dry run is the same check-only request to
+the org, with the same job id to record and the same report to read back.
 
 **Two kinds of run are not recorded, on purpose.** A run that folded an
 `extra-dirs` tree into one package validated something a deployment does not
