@@ -4,6 +4,7 @@ import {resolveConfig, treeList}                from '../lib/config.mjs';
 import {error, group, setOutput, summary, warn} from '../lib/core.mjs';
 import {buildDelta, isEmpty, resolveScope}      from '../lib/delta.mjs';
 import {pruneDestructive, renderPruned}         from '../lib/destructive.mjs';
+import {renderRetiring, stageRetiringFlows}     from '../lib/flows.mjs';
 import {failureMessage}                         from '../lib/inputs.mjs';
 import {renderDeltaSummary}                     from '../lib/manifest.mjs';
 import {recordValidation}                       from '../lib/record.mjs';
@@ -143,6 +144,24 @@ async function main() {
     }
   } else if (config.delta) {
     await summary(renderDeltaSummary(delta, config));
+  }
+
+  // After the pruning, so a flow the org has already lost is not looked up;
+  // and before the scope is resolved, because it rewrites both manifests.
+  if (config.delta && config.retireFlows && !delta.destructive.isEmpty) {
+    const staged = await group('Check the deleted flows against the org', () => stageRetiringFlows(delta, config));
+    await summary(renderRetiring(staged, {checkOnly: true}));
+    await publishDelta(delta);
+
+    if (isEmpty(delta)) {
+      console.log('The only changes delete flows still active in the org; nothing to validate.');
+      await comment(renderNothing(
+        config,
+        'nothing to validate — the only changes delete flows still active in the org, which the deploy action retires.'
+      ));
+      await publishOutcome('skipped');
+      return;
+    }
   }
 
   await validate(delta);
