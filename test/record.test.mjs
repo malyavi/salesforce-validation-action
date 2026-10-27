@@ -17,6 +17,7 @@ const config = {
   sourceDirs: ['force-app'],
   destructive: 'post',
   ignoreWhitespace: true,
+  retireFlows: true,
   testLevel: 'RunLocalTests',
   validationTagPrefix: 'ci/validated',
   environment: 'main'
@@ -43,6 +44,7 @@ describe('validationRecord', () => {
       sourceDirs: ['force-app'],
       destructive: 'post',
       ignoreWhitespace: true,
+      retireFlows: true,
       testLevel: 'RunLocalTests'
     });
     // The reader on the other side is the same module, so this is the contract.

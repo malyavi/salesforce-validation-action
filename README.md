@@ -25,7 +25,8 @@ outcome and the scope.
 3. **Builds the delta** between the merge base and what is checked out.
 4. **Finishes green without logging in** when no metadata changed. A pull
    request that only touches tests, documentation or tooling costs seconds.
-5. **Authenticates**, then **prunes the deletions** the org has already applied.
+5. **Authenticates**, then **prunes the deletions** the org has already applied,
+   and **rewrites flow deletions** into ones the org accepts — see below.
 6. **Runs one check-only deployment** and reports it: the scope in the pull
    request comment, the Metadata API's own errors in the job summary, and the
    quick-deploy id as an output. A delta made only of markup — Lightning web
@@ -51,6 +52,26 @@ It **fails open**: a type that cannot be listed keeps all of its members. A
 spurious failure then behaves like no pruning, where guessing the other way
 would silently skip a deletion that was genuinely required and leave the org
 ahead of the source with nothing in the log to say so.
+
+**A deleted flow is deleted version by version, and deactivated first.** The org refuses the deletion of a flow by its bare name, which is how
+sfdx-git-delta lists it — "insufficient access rights on cross-reference id" —
+for two reasons. A flow is deleted **version by version**: since API 44 each
+version is its own component, and the bare name deletes none of them. And an
+**active** flow cannot be deleted at all; deploying a version as `Obsolete` or
+`Draft` does not change that, since it adds an inactive version and leaves the
+active one running.
+
+So each deleted flow is looked up in the org, and its deletion is rewritten to
+name every version the org holds (`My_Flow-1`, `My_Flow-2`, …). An active one also
+gets a `FlowDefinition` with `activeVersionNumber` 0 in the package, which a
+change can also carry itself. The deactivation takes effect inside the
+deployment, check-only or not, so the tests of whatever replaces the flow run
+without it, and the deletions are post-destructive, so they run after it, in the
+same transaction. A failure anywhere rolls all of it back.
+
+A flow whose versions cannot be read keeps its deletion as it was.
+`retire-flows: false` turns this off. Paused or failed flow interviews that
+reference a version still block its deletion; they have to be cleared in the org.
 
 **`extra-dirs` is one request, not two.** Point it at a directory outside the
 package — a samples tree, a connected-app definition deployed by hand — and when
@@ -157,6 +178,7 @@ refused by name, before anything is installed.
 | `ignore-whitespace` | `true` | Whether a whitespace-only change counts. |
 | `destructive-changes` | `post` | `post`, `pre` or `ignore`. |
 | `prune-destructive` | `true` | Whether to drop deletions the org has already applied. |
+| `retire-flows` | `true` | Whether to rewrite flow deletions into ones the org accepts: every version, deactivated first. |
 | `test-level` | `RunLocalTests` | `NoTestRun`, `RunSpecifiedTests`, `RunLocalTests` or `RunAllTestsInOrg`. A UI-only delta runs at `NoTestRun` regardless; see above. |
 | `tests` | — | Classes for `RunSpecifiedTests`. |
 | `wait-minutes` | `30` | How long to wait for the org. |

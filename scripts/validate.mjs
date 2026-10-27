@@ -1,12 +1,13 @@
-import {writeFile}                              from 'node:fs/promises';
-import {commentConfig, updateCommentSection}    from '../lib/comment.mjs';
-import {resolveConfig, treeList}                from '../lib/config.mjs';
-import {error, group, setOutput, summary, warn} from '../lib/core.mjs';
-import {buildDelta, isEmpty, resolveScope}      from '../lib/delta.mjs';
-import {pruneDestructive, renderPruned}         from '../lib/destructive.mjs';
-import {failureMessage}                         from '../lib/inputs.mjs';
-import {renderDeltaSummary}                     from '../lib/manifest.mjs';
-import {recordValidation}                       from '../lib/record.mjs';
+import {writeFile}                               from 'node:fs/promises';
+import {commentConfig, updateCommentSection}     from '../lib/comment.mjs';
+import {resolveConfig, treeList}                 from '../lib/config.mjs';
+import {error, group, setOutput, summary, warn}  from '../lib/core.mjs';
+import {buildDelta, isEmpty, resolveScope}       from '../lib/delta.mjs';
+import {pruneDestructive, renderPruned}          from '../lib/destructive.mjs';
+import {renderFlowDeletions, stageFlowDeletions} from '../lib/flows.mjs';
+import {failureMessage}                          from '../lib/inputs.mjs';
+import {renderDeltaSummary}                      from '../lib/manifest.mjs';
+import {recordValidation}                        from '../lib/record.mjs';
 import {
   renderFailed,
   renderNothing,
@@ -15,7 +16,7 @@ import {
   summaryFailed,
   summaryNothing,
   summaryPassed
-}                                               from '../lib/report.mjs';
+}                                                from '../lib/report.mjs';
 import {
   authenticate,
   checkOnlyCommand,
@@ -26,10 +27,10 @@ import {
   fetchDeployReport,
   registerActiveDeployment,
   teardown
-}                                               from '../lib/salesforce.mjs';
-import {isSuperseded, runContext}               from '../lib/superseded.mjs';
-import {resolveTestLevel}                       from '../lib/test-level.mjs';
-import {installToolchain}                       from '../lib/toolchain.mjs';
+}                                                from '../lib/salesforce.mjs';
+import {isSuperseded, runContext}                from '../lib/superseded.mjs';
+import {resolveTestLevel}                        from '../lib/test-level.mjs';
+import {installToolchain}                        from '../lib/toolchain.mjs';
 
 /**
  * Validates the metadata a change touches against a real org: a check-only
@@ -143,6 +144,14 @@ async function main() {
     }
   } else if (config.delta) {
     await summary(renderDeltaSummary(delta, config));
+  }
+
+  // After the pruning, so a flow the org has already lost is not looked up;
+  // and before the scope is resolved, because it rewrites both manifests.
+  if (config.delta && config.retireFlows && !delta.destructive.isEmpty) {
+    const staged = await group('Check the deleted flows against the org', () => stageFlowDeletions(delta, config));
+    await summary(renderFlowDeletions(staged));
+    await publishDelta(delta);
   }
 
   await validate(delta);
