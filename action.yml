@@ -205,6 +205,28 @@ inputs:
     description: Pull request to comment on. Read from the event payload when unset.
     required: false
     default: ''
+  requeue-dropped:
+    description: >-
+      Whether to hand the org on, as the last step, to a pull request whose
+      validation GitHub cancelled while it waited. A concurrency group keeps one
+      running and one pending job, and a job that arrives while another is
+      pending cancels it, so pull requests pushed close together lose all but
+      the first and the last. Needs `actions: write`, and `requeue-job-name`.
+    required: false
+    default: 'false'
+  requeue-job-name:
+    description: >-
+      The display name of the job that runs this action, as the run's job list
+      shows it. Needed by `requeue-dropped`, which finds a dropped validation by
+      that job being cancelled before it ran a step.
+    required: false
+    default: ''
+  requeue-dry-run:
+    description: >-
+      Whether `requeue-dropped` only reports what it would re-run. For trying it
+      in a repository before it re-runs anything.
+    required: false
+    default: 'false'
   github-token:
     description: >-
       Token used to resolve the merge base, read the changed files and write the
@@ -315,3 +337,17 @@ runs:
       env:
         INPUT_ORG_ALIAS: ${{ inputs.org-alias }}
       run: node "$GITHUB_ACTION_PATH/scripts/cleanup.mjs"
+
+    # After the cleanup, so the org is let go of before anything is handed on, and
+    # while the caller's job still holds its concurrency group, so a re-run started
+    # here takes the pending slot and begins the moment the job ends. `!cancelled()`
+    # rather than `always()`: whoever cancelled the run is handling it, and a
+    # validation that failed has still had its turn. The script never fails the job.
+    - name: Hand the org on to a dropped validation
+      if: ${{ !cancelled() && inputs.requeue-dropped == 'true' }}
+      shell: bash
+      env:
+        INPUT_REQUEUE_JOB_NAME: ${{ inputs.requeue-job-name }}
+        INPUT_REQUEUE_DRY_RUN: ${{ inputs.requeue-dry-run }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "$GITHUB_ACTION_PATH/scripts/requeue.mjs"

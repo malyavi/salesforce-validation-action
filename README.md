@@ -198,6 +198,9 @@ refused by name, before anything is installed.
 | `record-validation` | `false` | Record a passing run as `ci/validated/<environment>/<tree>` for the deploy action to promote. Needs `contents: write`. |
 | `validation-tag-prefix` | `ci/validated` | Where the records are written; the environment and the tree follow it. |
 | `working-directory` | `.` | Directory holding the project. |
+| `requeue-dropped` | `false` | As the last step, hand the org on to a pull request whose validation GitHub cancelled while it waited; see "Concurrency". Needs `actions: write` and `requeue-job-name`. |
+| `requeue-job-name` | — | The display name of the job that runs this action, which `requeue-dropped` looks for. |
+| `requeue-dry-run` | `false` | Only report what `requeue-dropped` would re-run. |
 | `comment`, `comment-section`, `comment-tag`, `comment-section-order`, `pr-number`, `github-token` | | The shared comment; see below. |
 
 ## Outputs
@@ -294,7 +297,7 @@ Give every check reporting into one comment the same `comment-tag`:
 ## Concurrency
 
 A validation holds the org's deployment lock for as long as it runs, so serialize
-the job per org and let runs queue rather than cancelling them mid-deployment:
+the job per org rather than cancelling a run mid-deployment:
 
 ```yaml
 concurrency:
@@ -305,6 +308,39 @@ concurrency:
 `cancel-in-progress: false` is deliberate — killing the runner would leave
 Salesforce still validating with nobody watching. `skip-if-superseded` is what
 handles the run that goes stale while it waits.
+
+**A concurrency group is not a queue.** GitHub keeps one running and one pending
+job per group, and a job that arrives while another is pending cancels it. Pull
+requests pushed close together therefore lose all but the first and the last: the
+others' validation is cancelled after the jobs before it passed, and nothing on the
+pull request says so.
+
+Set `requeue-dropped: true` to hand the org on. The last step of the action finds
+one open pull request into the same branch whose latest run has the validating job
+cancelled before it ran a step, with every other job of that run passed or
+skipped, and re-runs that run's failed jobs. The job still holds the group, so the
+re-run waits in the pending slot and begins the moment the job ends, and each
+validation passes the org on again. It re-runs one only, since a second would take
+the pending slot and cancel the first, and it does nothing while another pull
+request's validation is already waiting or running. A run a person cancelled, or a
+validation that had started, is left alone. The step never fails the job.
+
+```yaml
+jobs:
+  validate:
+    name: Validate metadata
+    permissions:
+      actions: write
+    steps:
+      - uses: malyavi/salesforce-validation-action@<version>
+        with:
+          requeue-dropped: true
+          requeue-job-name: Validate metadata
+```
+
+The re-run reuses the run's original merge commit, and a push to the pull request
+supersedes it as usual. Try it with `requeue-dry-run: true` first to see what it
+would re-run.
 
 ## Development
 
