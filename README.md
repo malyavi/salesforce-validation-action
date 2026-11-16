@@ -214,6 +214,7 @@ refused by name, before anything is installed.
 | `base-sha` | The commit it was taken against. |
 | `manifest-path`, `destructive-path` | The generated manifests. |
 | `json-report-path`, `component-failures`, `test-failures` | The structured result, when `json-report` asked for one. |
+| `requeue-outcome` | What `requeue-dropped` did: `requeued`, `would-requeue`, `waiting`, `none`, `skipped` or `error`. |
 
 `components`, `deletions`, `base-sha` and the two manifest paths are published
 **before** the org is touched, so a later step can upload the manifests or

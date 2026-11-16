@@ -19,6 +19,10 @@ on:
 
 permissions:
   contents: read
+  # Read only: the requeue step is smoked as a dry run, which lists pull requests
+  # and runs and re-runs nothing.
+  actions: read
+  pull-requests: read
 
 concurrency:
   group: pr-${{ github.event.pull_request.number || github.ref }}
@@ -95,16 +99,30 @@ jobs:
           client-id: unused
           comment: 'false'
           skip-if-superseded: 'false'
+          # The last step, as a dry run: it reads this repository's pull requests
+          # and runs, and says what it would re-run without re-running anything.
+          requeue-dropped: 'true'
+          requeue-job-name: Smoke test
+          requeue-dry-run: 'true'
 
       - name: Check that it skipped without an org
         env:
           OUTCOME: ${{ steps.empty.outputs.outcome }}
           COMPONENTS: ${{ steps.empty.outputs.components }}
+          REQUEUE: ${{ steps.empty.outputs.requeue-outcome }}
         run: |
           echo "outcome=$OUTCOME components=$COMPONENTS"
           fail() { echo "::error::$1"; exit 1; }
           [ "$OUTCOME" = "skipped" ] || fail "A documentation-only change must report 'skipped', got '$OUTCOME'. If it reported 'failed' the run reached the login, which is exactly what the empty-delta check exists to avoid."
           [ "$COMPONENTS" = "0" ] || fail "Expected an empty delta, got '$COMPONENTS' component(s)."
+          # The last step ran and read the API without error. Which of these it is
+          # depends on what else is open here, so any of them passes; empty means it
+          # did not run, and error means it could not read.
+          echo "requeue=$REQUEUE"
+          case "$REQUEUE" in
+            none|waiting|would-requeue|skipped) ;;
+            *) fail "The requeue step should report none, waiting, would-requeue or skipped, got '$REQUEUE'." ;;
+          esac
 
       # The real-delta path, as far as it can go without an org: the manifest is
       # built and published, and the run then fails at the login — with the

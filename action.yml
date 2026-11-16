@@ -272,6 +272,12 @@ outputs:
   destructive-path:
     description: The generated destructive manifest.
     value: ${{ steps.validate.outputs.destructive-path }}
+  requeue-outcome:
+    description: >-
+      What `requeue-dropped` did: `requeued`, `would-requeue` (a dry run),
+      `waiting` (another validation is already queued or running), `none`,
+      `skipped` (not a pull request run) or `error`. Empty when it is off.
+    value: ${{ steps.requeue.outputs.outcome }}
 
 runs:
   using: composite
@@ -344,6 +350,7 @@ runs:
     # rather than `always()`: whoever cancelled the run is handling it, and a
     # validation that failed has still had its turn. The script never fails the job.
     - name: Hand the org on to a dropped validation
+      id: requeue
       if: ${{ !cancelled() && inputs.requeue-dropped == 'true' }}
       shell: bash
       env:
